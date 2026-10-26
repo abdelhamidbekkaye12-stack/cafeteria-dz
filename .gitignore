@@ -1,0 +1,16 @@
+# Environnement virtuel Python
+venv/
+
+# Fichiers compilés par Python
+__pycache__/
+*.pyc
+
+# Base de données locale
+db.sqlite3
+
+# Secrets (mots de passe, clés)
+.env
+
+# Fichiers de VS Code et de Windows
+.vscode/
+Thumbs.db
