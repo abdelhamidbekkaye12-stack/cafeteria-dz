@@ -1,7 +1,9 @@
 from django.conf import settings
 from django.db import models
-from django.utils import timezone
 from django.db.models import Sum
+from django.utils import timezone
+
+
 class SessionCaisse(models.Model):
     """Le service d'un serveur, de l'ouverture à la clôture de son tiroir."""
 
@@ -30,8 +32,7 @@ class SessionCaisse(models.Model):
                 condition=models.Q(fermee_le__isnull=True),
                 name="une_seule_session_ouverte_par_employe",
             ),
-        ]
-    models.CheckConstraint(
+            models.CheckConstraint(
                 condition=(
                     models.Q(fermee_le__isnull=True)
                     | (
@@ -42,14 +43,14 @@ class SessionCaisse(models.Model):
                 ),
                 name="session_fermee_avec_montants",
             ),
-            
-    models.CheckConstraint(
+            models.CheckConstraint(
                 condition=(
                     models.Q(fermee_le__isnull=True)
                     | models.Q(ecart=models.F("montant_compte") - models.F("montant_attendu"))
                 ),
                 name="session_ecart_coherent",
             ),
+        ]
 
     def __str__(self):
         etat = "ouverte" if self.est_ouverte else "fermée"

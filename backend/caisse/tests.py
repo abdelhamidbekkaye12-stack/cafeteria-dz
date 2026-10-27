@@ -169,7 +169,7 @@ class DeclarerSortieTests(TestCase):
         with self.assertRaises(ValidationError):
             declarer_sortie(self.session, 500, "Livreur de pain")
 
-    class CloturerSessionTests(TestCase):
+class CloturerSessionTests(TestCase):
     """Vérifie la clôture de caisse et le calcul de l'écart."""
 
     def setUp(self):

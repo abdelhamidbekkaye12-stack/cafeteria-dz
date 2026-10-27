@@ -16,7 +16,7 @@ def enregistrer_vente(session, articles, montant_recu):
 
     Le total est TOUJOURS calculé ici, à partir des prix de la base de données.
     """
-    session.refresh_from_db()
+    session = SessionCaisse.objects.select_for_update().get(pk=session.pk)
     if not session.est_ouverte:
         raise ValidationError("La session de caisse est fermée.")
     if not articles:
@@ -52,7 +52,7 @@ MOTIF_LONGUEUR_MIN = 5
 @transaction.atomic
 def declarer_sortie(session, montant, motif):
     """Enregistre une sortie d'argent du tiroir, avec un motif obligatoire."""
-    session.refresh_from_db()
+    session = SessionCaisse.objects.select_for_update().get(pk=session.pk)
     if not session.est_ouverte:
         raise ValidationError("La session de caisse est fermée.")
     if montant < 1:
