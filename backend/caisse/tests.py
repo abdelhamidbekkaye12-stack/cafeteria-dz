@@ -6,7 +6,7 @@ from .models import SessionCaisse, SortieCaisse, Vente
 from .services import declarer_sortie, enregistrer_vente
 from .models import SessionCaisse
 from django.core.exceptions import ValidationError
-
+from .services import cloturer_session, declarer_sortie, enregistrer_vente
 from catalogue.models import Categorie, Produit
 
 from .models import Vente
@@ -32,8 +32,7 @@ class SessionCaisseTests(TestCase):
 
     def test_nouvelle_session_possible_apres_cloture(self):
         premiere = SessionCaisse.objects.create(employe=self.karim, fond_initial=3000)
-        premiere.fermee_le = timezone.now()
-        premiere.save()
+        cloturer_session(premiere, 3000)
 
         seconde = SessionCaisse.objects.create(employe=self.karim, fond_initial=3000)
         self.assertTrue(seconde.est_ouverte)
@@ -98,8 +97,7 @@ class EnregistrerVenteTests(TestCase):
             enregistrer_vente(self.session, [(self.cafe.pk, 1)], montant_recu=100)
 
     def test_session_fermee_refusee(self):
-        self.session.fermee_le = timezone.now()
-        self.session.save()
+        cloturer_session(self.session, 3000)
         with self.assertRaises(ValidationError):
             enregistrer_vente(self.session, [(self.cafe.pk, 1)], montant_recu=100)
 
@@ -167,7 +165,51 @@ class DeclarerSortieTests(TestCase):
         self.assertEqual(SortieCaisse.objects.count(), 0)
 
     def test_sortie_session_fermee_refusee(self):
-        self.session.fermee_le = timezone.now()
-        self.session.save()
+        cloturer_session(self.session, 3000)
         with self.assertRaises(ValidationError):
             declarer_sortie(self.session, 500, "Livreur de pain")
+
+    class CloturerSessionTests(TestCase):
+    """Vérifie la clôture de caisse et le calcul de l'écart."""
+
+    def setUp(self):
+        karim = Employe.objects.create_user(username="karim")
+        self.session = SessionCaisse.objects.create(employe=karim, fond_initial=3000)
+        boissons = Categorie.objects.create(nom="Boissons chaudes")
+        self.cafe = Produit.objects.create(nom="Café express", categorie=boissons, prix=80)
+        enregistrer_vente(self.session, [(self.cafe.pk, 25)], montant_recu=2000)
+        declarer_sortie(self.session, 450, "Livreur de pain")
+        # Montant attendu : 3000 + 2000 - 450 = 4550 DA
+
+    def test_caisse_juste_ecart_nul(self):
+        session = cloturer_session(self.session, 4550)
+        self.assertEqual(session.montant_attendu, 4550)
+        self.assertEqual(session.ecart, 0)
+
+    def test_argent_manquant_ecart_negatif(self):
+        session = cloturer_session(self.session, 4350)
+        self.assertEqual(session.ecart, -200)
+
+    def test_argent_en_trop_ecart_positif(self):
+        session = cloturer_session(self.session, 4600)
+        self.assertEqual(session.ecart, 50)
+
+    def test_session_fermee_apres_cloture(self):
+        session = cloturer_session(self.session, 4550)
+        self.assertFalse(session.est_ouverte)
+
+    def test_double_cloture_refusee(self):
+        cloturer_session(self.session, 4550)
+        with self.assertRaises(ValidationError):
+            cloturer_session(self.session, 9999)
+
+    def test_montant_negatif_refuse(self):
+        with self.assertRaises(ValidationError):
+            cloturer_session(self.session, -1)
+
+    def test_ecart_falsifie_refuse_par_la_base(self):
+        session = cloturer_session(self.session, 4350)
+        session.ecart = 0
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                session.save()

@@ -2,10 +2,10 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from catalogue.models import Produit
-
+from django.utils import timezone
 from .models import LigneVente, Vente
 from .models import LigneVente, SortieCaisse, Vente
-
+from .models import LigneVente, SessionCaisse, SortieCaisse, Vente
 @transaction.atomic
 def enregistrer_vente(session, articles, montant_recu):
     """
@@ -71,3 +71,19 @@ def declarer_sortie(session, montant, motif):
         )
 
     return SortieCaisse.objects.create(session=session, montant=montant, motif=motif)
+@transaction.atomic
+def cloturer_session(session, montant_compte):
+    """Clôture une session : fige le montant attendu et calcule l'écart."""
+    session = SessionCaisse.objects.select_for_update().get(pk=session.pk)
+    if not session.est_ouverte:
+        raise ValidationError("Cette session de caisse est déjà clôturée.")
+    if montant_compte < 0:
+        raise ValidationError("Le montant compté ne peut pas être négatif.")
+
+    attendu = session.calculer_montant_attendu()
+    session.montant_compte = montant_compte
+    session.montant_attendu = attendu
+    session.ecart = montant_compte - attendu
+    session.fermee_le = timezone.now()
+    session.save(update_fields=["montant_compte", "montant_attendu", "ecart", "fermee_le"])
+    return session

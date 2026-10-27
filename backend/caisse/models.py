@@ -31,6 +31,25 @@ class SessionCaisse(models.Model):
                 name="une_seule_session_ouverte_par_employe",
             ),
         ]
+    models.CheckConstraint(
+                condition=(
+                    models.Q(fermee_le__isnull=True)
+                    | (
+                        models.Q(montant_compte__isnull=False)
+                        & models.Q(montant_attendu__isnull=False)
+                        & models.Q(ecart__isnull=False)
+                    )
+                ),
+                name="session_fermee_avec_montants",
+            ),
+            
+    models.CheckConstraint(
+                condition=(
+                    models.Q(fermee_le__isnull=True)
+                    | models.Q(ecart=models.F("montant_compte") - models.F("montant_attendu"))
+                ),
+                name="session_ecart_coherent",
+            ),
 
     def __str__(self):
         etat = "ouverte" if self.est_ouverte else "fermée"
