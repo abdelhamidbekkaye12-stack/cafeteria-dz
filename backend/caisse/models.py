@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
-
+from django.db.models import Sum
 class SessionCaisse(models.Model):
     """Le service d'un serveur, de l'ouverture à la clôture de son tiroir."""
 
@@ -40,6 +40,11 @@ class SessionCaisse(models.Model):
     @property
     def est_ouverte(self):
         return self.fermee_le is None
+    def calculer_montant_attendu(self):
+        """Fond initial + ventes non annulées − sorties."""
+        ventes = self.ventes.filter(annulee=False).aggregate(somme=Sum("total"))["somme"] or 0
+        sorties = self.sorties.aggregate(somme=Sum("montant"))["somme"] or 0
+        return self.fond_initial + ventes - sorties
 class Vente(models.Model):
     """Un ticket de caisse. Jamais supprimé : il peut seulement être annulé."""
 
@@ -144,3 +149,33 @@ class LigneVente(models.Model):
     def sous_total(self):
         return self.quantite * self.prix_unitaire
 # Create your models here.
+class SortieCaisse(models.Model):
+    """De l'argent qui quitte le tiroir : livreur payé, achat urgent…"""
+
+    session = models.ForeignKey(
+        SessionCaisse,
+        on_delete=models.PROTECT,
+        related_name="sorties",
+        verbose_name="session de caisse",
+    )
+    montant = models.PositiveIntegerField("montant (DA)")
+    motif = models.CharField("motif", max_length=255)
+    cree_le = models.DateTimeField("déclarée le", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "sortie de caisse"
+        verbose_name_plural = "sorties de caisse"
+        ordering = ["-cree_le"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(montant__gte=1),
+                name="sortie_montant_au_moins_1_da",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(motif=""),
+                name="sortie_motif_obligatoire",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Sortie de {self.montant} DA : {self.motif}"

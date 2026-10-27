@@ -4,7 +4,7 @@ from django.db import transaction
 from catalogue.models import Produit
 
 from .models import LigneVente, Vente
-
+from .models import LigneVente, SortieCaisse, Vente
 
 @transaction.atomic
 def enregistrer_vente(session, articles, montant_recu):
@@ -45,3 +45,29 @@ def enregistrer_vente(session, articles, montant_recu):
         ligne.vente = vente
     LigneVente.objects.bulk_create(lignes)
     return vente
+
+MOTIF_LONGUEUR_MIN = 5
+
+
+@transaction.atomic
+def declarer_sortie(session, montant, motif):
+    """Enregistre une sortie d'argent du tiroir, avec un motif obligatoire."""
+    session.refresh_from_db()
+    if not session.est_ouverte:
+        raise ValidationError("La session de caisse est fermée.")
+    if montant < 1:
+        raise ValidationError("Le montant doit être d'au moins 1 DA.")
+
+    motif = motif.strip()
+    if len(motif) < MOTIF_LONGUEUR_MIN:
+        raise ValidationError(
+            f"Le motif doit contenir au moins {MOTIF_LONGUEUR_MIN} caractères."
+        )
+
+    disponible = session.calculer_montant_attendu()
+    if montant > disponible:
+        raise ValidationError(
+            f"Sortie impossible : {montant} DA demandés, {disponible} DA dans le tiroir."
+        )
+
+    return SortieCaisse.objects.create(session=session, montant=montant, motif=motif)

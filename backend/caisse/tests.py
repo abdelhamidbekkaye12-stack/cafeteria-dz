@@ -2,7 +2,8 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
-
+from .models import SessionCaisse, SortieCaisse, Vente
+from .services import declarer_sortie, enregistrer_vente
 from .models import SessionCaisse
 from django.core.exceptions import ValidationError
 
@@ -110,3 +111,63 @@ class EnregistrerVenteTests(TestCase):
         with self.assertRaises(ValidationError):
             enregistrer_vente(self.session, [(self.cafe.pk, 0)], montant_recu=100)
 # Create your tests here.
+class MontantAttenduTests(TestCase):
+    """Vérifie le calcul du montant qui devrait se trouver dans le tiroir."""
+
+    def setUp(self):
+        self.karim = Employe.objects.create_user(username="karim")
+        self.gerant = Employe.objects.create_user(username="gerant", role="GERANT")
+        self.session = SessionCaisse.objects.create(employe=self.karim, fond_initial=3000)
+        boissons = Categorie.objects.create(nom="Boissons chaudes")
+        self.cafe = Produit.objects.create(nom="Café express", categorie=boissons, prix=80)
+
+    def test_sans_vente_le_montant_attendu_est_le_fond(self):
+        self.assertEqual(self.session.calculer_montant_attendu(), 3000)
+
+    def test_les_ventes_augmentent_le_montant_attendu(self):
+        enregistrer_vente(self.session, [(self.cafe.pk, 2)], montant_recu=200)
+        self.assertEqual(self.session.calculer_montant_attendu(), 3160)
+
+    def test_les_sorties_diminuent_le_montant_attendu(self):
+        declarer_sortie(self.session, 500, "Livreur de pain")
+        self.assertEqual(self.session.calculer_montant_attendu(), 2500)
+
+    def test_une_vente_annulee_ne_compte_pas(self):
+        vente = enregistrer_vente(self.session, [(self.cafe.pk, 2)], montant_recu=200)
+        vente.annulee = True
+        vente.annulee_le = timezone.now()
+        vente.annulee_par = self.gerant
+        vente.motif_annulation = "Erreur de saisie"
+        vente.save()
+        self.assertEqual(self.session.calculer_montant_attendu(), 3000)
+
+
+class DeclarerSortieTests(TestCase):
+    """Vérifie les règles des sorties de caisse."""
+
+    def setUp(self):
+        karim = Employe.objects.create_user(username="karim")
+        self.session = SessionCaisse.objects.create(employe=karim, fond_initial=3000)
+
+    def test_sortie_normale_acceptee(self):
+        sortie = declarer_sortie(self.session, 500, "  Livreur de pain  ")
+        self.assertEqual(sortie.motif, "Livreur de pain")
+
+    def test_motif_trop_court_refuse(self):
+        with self.assertRaises(ValidationError):
+            declarer_sortie(self.session, 500, "x")
+
+    def test_motif_fait_d_espaces_refuse(self):
+        with self.assertRaises(ValidationError):
+            declarer_sortie(self.session, 500, "       ")
+
+    def test_sortie_superieure_au_tiroir_refusee(self):
+        with self.assertRaises(ValidationError):
+            declarer_sortie(self.session, 5000, "Achat de lait")
+        self.assertEqual(SortieCaisse.objects.count(), 0)
+
+    def test_sortie_session_fermee_refusee(self):
+        self.session.fermee_le = timezone.now()
+        self.session.save()
+        with self.assertRaises(ValidationError):
+            declarer_sortie(self.session, 500, "Livreur de pain")
