@@ -37,7 +37,12 @@ class Produit(models.Model):
         verbose_name = "produit"
         verbose_name_plural = "produits"
         ordering = ["categorie", "nom"]
-
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(prix__gte=1),
+                name="produit_prix_au_moins_1_da",
+            ),
+        ]
     def __str__(self):
         return f"{self.nom} ({self.prix} DA)"
 
