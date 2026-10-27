@@ -41,6 +41,7 @@ INSTALLED_APPS = [
         # Nos applications
     'comptes',
     'catalogue',
+      'caisse',
 ]
 
 MIDDLEWARE = [
