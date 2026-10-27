@@ -127,4 +127,10 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
-AUTH_USER_MODEL = "comptes.Employe"
+AUTH_USER_MODEL = 'comptes.Employe'
+
+# Tests : hachage rapide (la base de test est détruite après chaque exécution)
+import sys
+
+if "test" in sys.argv:
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
