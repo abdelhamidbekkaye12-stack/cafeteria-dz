@@ -31,17 +31,19 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'rest_framework',
-        # Nos applications
-    'comptes',
-    'catalogue',
-    'caisse',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    # Bibliothèques externes
+    "rest_framework",
+    "rest_framework.authtoken",
+    # Nos applications
+    "comptes",
+    "catalogue",
+    "caisse",
 ]
 
 MIDDLEWARE = [
@@ -139,6 +141,22 @@ if "test" in sys.argv:
     PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 # API : tout est fermé par défaut aux personnes non connectées
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Modèle d'utilisateur personnalisé
+AUTH_USER_MODEL = "comptes.Employe"
+
+# API : tout est fermé par défaut aux personnes non connectées
 REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.TokenAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
+    ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
 }
+
+# Tests : hachage rapide (la base de test est détruite après chaque exécution)
+import sys
+
+if "test" in sys.argv:
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]

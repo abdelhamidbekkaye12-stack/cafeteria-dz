@@ -41,10 +41,10 @@ class ProduitsEnVenteApiTests(APITestCase):
         Produit.objects.create(nom="Café express", categorie=boissons, prix=80)
         Produit.objects.create(nom="Café crème", categorie=boissons, prix=120, en_vente=False)
         Produit.objects.create(nom="Croissant", categorie=viennoiseries, prix=60)
-
+    
     def test_inconnu_refuse(self):
         reponse = self.client.get(self.url)
-        self.assertEqual(reponse.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(reponse.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_employe_connecte_accepte(self):
         self.client.force_authenticate(self.karim)
