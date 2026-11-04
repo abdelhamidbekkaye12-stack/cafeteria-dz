@@ -3,6 +3,7 @@ from django.db import transaction
 from django.db import IntegrityError, transaction
 from catalogue.models import Produit
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 from .models import LigneVente, Vente
 from .models import LigneVente, SortieCaisse, Vente
 from .models import LigneVente, SessionCaisse, SortieCaisse, Vente
@@ -97,3 +98,28 @@ def ouvrir_session(employe, fond_initial):
             return SessionCaisse.objects.create(employe=employe, fond_initial=fond_initial)
     except IntegrityError:
         raise ValidationError("Vous avez déjà une session de caisse ouverte.")
+
+@transaction.atomic
+def annuler_vente(vente, gerant, motif):
+    """Annule une vente. Réservé au gérant, motif obligatoire, caisse encore ouverte."""
+    if gerant.role != get_user_model().Role.GERANT:
+        raise ValidationError("Seul le gérant peut annuler une vente.")
+
+    vente = Vente.objects.select_for_update().select_related("session").get(pk=vente.pk)
+    if vente.annulee:
+        raise ValidationError("Cette vente est déjà annulée.")
+    if not vente.session.est_ouverte:
+        raise ValidationError("Impossible d'annuler une vente d'une caisse déjà clôturée.")
+
+    motif = motif.strip()
+    if len(motif) < MOTIF_LONGUEUR_MIN:
+        raise ValidationError(
+            f"Le motif doit contenir au moins {MOTIF_LONGUEUR_MIN} caractères."
+        )
+
+    vente.annulee = True
+    vente.annulee_le = timezone.now()
+    vente.annulee_par = gerant
+    vente.motif_annulation = motif
+    vente.save(update_fields=["annulee", "annulee_le", "annulee_par", "motif_annulation"])
+    return vente

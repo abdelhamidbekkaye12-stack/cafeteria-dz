@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "comptes",
     "catalogue",
     "caisse",
+    "gestion",
 ]
 
 MIDDLEWARE = [

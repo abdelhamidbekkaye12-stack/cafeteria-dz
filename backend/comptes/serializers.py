@@ -21,3 +21,4 @@ class ConnexionPinSerializer(serializers.Serializer):
 
     employe_id = serializers.IntegerField()
     pin = serializers.CharField(max_length=PIN_LONGUEUR)
+    
