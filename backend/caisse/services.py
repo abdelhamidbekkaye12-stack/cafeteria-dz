@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
-
+from django.db import IntegrityError, transaction
 from catalogue.models import Produit
 from django.utils import timezone
 from .models import LigneVente, Vente
@@ -87,3 +87,13 @@ def cloturer_session(session, montant_compte):
     session.fermee_le = timezone.now()
     session.save(update_fields=["montant_compte", "montant_attendu", "ecart", "fermee_le"])
     return session
+
+def ouvrir_session(employe, fond_initial):
+    """Ouvre une session de caisse pour l'employé."""
+    if fond_initial < 0:
+        raise ValidationError("Le fond de caisse ne peut pas être négatif.")
+    try:
+        with transaction.atomic():
+            return SessionCaisse.objects.create(employe=employe, fond_initial=fond_initial)
+    except IntegrityError:
+        raise ValidationError("Vous avez déjà une session de caisse ouverte.")

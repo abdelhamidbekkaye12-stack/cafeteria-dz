@@ -153,8 +153,8 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "EXCEPTION_HANDLER": "config.exceptions.exception_handler",
 }
-
 # Tests : hachage rapide (la base de test est détruite après chaque exécution)
 import sys
 

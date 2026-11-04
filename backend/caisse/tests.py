@@ -8,7 +8,9 @@ from .models import SessionCaisse
 from django.core.exceptions import ValidationError
 from .services import cloturer_session, declarer_sortie, enregistrer_vente
 from catalogue.models import Categorie, Produit
-
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APITestCase
 from .models import Vente
 from .services import enregistrer_vente
 Employe = get_user_model()
@@ -213,3 +215,98 @@ class CloturerSessionTests(TestCase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 session.save()
+
+class CaisseApiTests(APITestCase):
+    """Vérifie le parcours complet d'un service via l'API."""
+
+    def setUp(self):
+        self.karim = Employe.objects.create_user(username="karim")
+        boissons = Categorie.objects.create(nom="Boissons chaudes")
+        self.cafe = Produit.objects.create(nom="Café express", categorie=boissons, prix=80)
+        self.client.force_authenticate(self.karim)
+
+    def ouvrir(self, fond=3000):
+        return self.client.post(reverse("session-ouvrir"), {"fond_initial": fond}, format="json")
+
+    def vendre(self, quantite=2, montant_recu=500, **extra):
+        donnees = {
+            "articles": [{"produit_id": self.cafe.pk, "quantite": quantite}],
+            "montant_recu": montant_recu,
+            **extra,
+        }
+        return self.client.post(reverse("ventes"), donnees, format="json")
+
+    # --- Accès ---
+
+    def test_inconnu_refuse(self):
+        self.client.force_authenticate(None)
+        self.assertEqual(self.ouvrir().status_code, status.HTTP_401_UNAUTHORIZED)
+
+    # --- Ouverture ---
+
+    def test_ouverture(self):
+        self.assertEqual(self.ouvrir().status_code, status.HTTP_201_CREATED)
+
+    def test_deuxieme_ouverture_refusee_avec_message(self):
+        self.ouvrir()
+        reponse = self.ouvrir()
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("déjà une session", reponse.json()["detail"])
+
+    def test_session_courante_sans_montant_attendu(self):
+        self.ouvrir()
+        session = self.client.get(reverse("session-courante")).json()
+        self.assertEqual(set(session.keys()), {"id", "fond_initial", "ouverte_le"})
+
+    # --- Ventes ---
+
+    def test_vente_calculee_par_le_serveur(self):
+        self.ouvrir()
+        reponse = self.vendre(quantite=2, montant_recu=500)
+        self.assertEqual(reponse.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(reponse.json()["total"], 160)
+        self.assertEqual(reponse.json()["rendu"], 340)
+
+    def test_total_envoye_par_la_tablette_ignore(self):
+        self.ouvrir()
+        reponse = self.vendre(quantite=2, montant_recu=500, total=1)
+        self.assertEqual(reponse.json()["total"], 160)
+
+    def test_vente_sans_session_refusee(self):
+        self.assertEqual(self.vendre().status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_vente_produit_inconnu_refusee_avec_message(self):
+        self.ouvrir()
+        donnees = {"articles": [{"produit_id": 9999, "quantite": 1}], "montant_recu": 500}
+        reponse = self.client.post(reverse("ventes"), donnees, format="json")
+        self.assertEqual(reponse.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("n'est pas en vente", reponse.json()["detail"])
+
+    # --- Sorties et clôture ---
+
+    def test_sortie(self):
+        self.ouvrir()
+        donnees = {"montant": 500, "motif": "Livreur de pain"}
+        reponse = self.client.post(reverse("sorties"), donnees, format="json")
+        self.assertEqual(reponse.status_code, status.HTTP_201_CREATED)
+
+    def test_cloture_a_l_aveugle(self):
+        self.ouvrir(fond=3000)
+        self.vendre(quantite=2, montant_recu=500)
+        reponse = self.client.post(
+            reverse("session-cloturer"), {"montant_compte": 3000}, format="json"
+        )
+        self.assertEqual(reponse.status_code, status.HTTP_200_OK)
+        self.assertEqual(set(reponse.json().keys()), {"detail"})
+
+        session = SessionCaisse.objects.get(employe=self.karim)
+        self.assertEqual(session.ecart, -160)
+
+    def test_impossible_de_cloturer_la_caisse_d_un_autre(self):
+        amine = Employe.objects.create_user(username="amine")
+        SessionCaisse.objects.create(employe=amine, fond_initial=2000)
+        reponse = self.client.post(
+            reverse("session-cloturer"), {"montant_compte": 0}, format="json"
+        )
+        self.assertEqual(reponse.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(SessionCaisse.objects.get(employe=amine).est_ouverte)
